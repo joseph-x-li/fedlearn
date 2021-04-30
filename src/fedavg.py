@@ -14,7 +14,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device {device}")
 
 # python3.6 fedavg.py --epochs 50 --frac 0.1 --local_ep 10 --local_bs 32
-# python3.6 fedavg.py --epochs 100 --local_ep 10 --local_bs 32 --
+# python3.6 fedavg.py --epochs 100 --local_ep 10 --local_bs 32 --iid 1 --dataset_size small
+
 
 def train(args, global_model, raw_data_train, raw_data_test):
     start_time = time.time()
@@ -28,7 +29,7 @@ def train(args, global_model, raw_data_train, raw_data_test):
     train_loss, train_accuracy = [], []
     for epoch in range(args.epochs):
         local_weights, local_losses = [], []
-        print(f'Global Training Round: {epoch + 1}/{args.epochs}')
+        print(f"Global Training Round: {epoch + 1}/{args.epochs}")
         sampled_users = random.sample(user_list, m)
         for user in tqdm(sampled_users):
             local_model = LocalUpdate(args=args, raw_data=raw_data_train, user=user)
@@ -52,18 +53,21 @@ def train(args, global_model, raw_data_train, raw_data_test):
 
         train_accuracy.append(sum(test_acc) / len(test_acc))
 
-        print(f"Train Loss: {train_loss[-1]:.4f}\t Test Accuracy: {(100 * train_accuracy[-1]):.2f}%")
+        print(
+            f"Train Loss: {train_loss[-1]:.4f}\t Test Accuracy: {(100 * train_accuracy[-1]):.2f}%"
+        )
 
-
-    print(f'Results after {args.epochs} global rounds of training:')
+    print(f"Results after {args.epochs} global rounds of training:")
     print("Avg Train Accuracy: {:.2f}%".format(100 * train_accuracy[-1]))
     print(f"Total Run Time: {(time.time() - start_time):0.4f}")
+
 
 def test(args, model):
     # Test inference after completion of training
     test_acc, test_loss = test_inference(args, global_model, test_dataset)
-    print("Test Accuracy: {:.2f}%".format(100*test_acc))
+    print("Test Accuracy: {:.2f}%".format(100 * test_acc))
     pass
+
 
 if __name__ == "__main__":
     args = args_parser()
