@@ -6,7 +6,7 @@ from tqdm import tqdm
 from data import LeafFEMNISTDataset
 
 def test_inference(args, model, raw_data_test):
-    """ Returns the test accuracy and loss.
+    """ Returns a summary??? of test accuracy and loss.
     """
     _, n_samples, users, _ = raw_data_test
     all_users = list(users.keys())
@@ -19,7 +19,7 @@ def test_inference(args, model, raw_data_test):
     criterion = nn.CrossEntropyLoss()
     for user in all_users:
         testloader = DataLoader(LeafFEMNISTDataset(raw_data_test, user), batch_size=128, shuffle=False)
-        with torch.no_grad:
+        with torch.no_grad():
             for batch_idx, (images, labels) in enumerate(testloader):
                 images, labels = images.to(device), labels.to(device)
 
@@ -29,7 +29,7 @@ def test_inference(args, model, raw_data_test):
                 loss += batch_loss.item()
 
                 # Prediction
-                _values, indicies = torch.max(logits, 1)
+                _, indicies = torch.max(logits, 1)
                 indicies = indicies.view(-1) # same as flatten
                 correct += torch.sum(torch.eq(indicies, labels)).item()
                 total += len(labels)
@@ -38,7 +38,7 @@ def test_inference(args, model, raw_data_test):
     accuracy = correct / total
     return accuracy, loss / total
 
-class LocalUpdate(object):
+class LocalUpdate:
     def __init__(self, args, raw_data, user):
         self.args = args
         self.trainloader = DataLoader(
@@ -54,9 +54,9 @@ class LocalUpdate(object):
         model.train()
         epoch_loss = []
 
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr, momentum=0.5)
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr, momentum=self.args.momentum)
 
-        for iter in tqdm(range(self.args.local_ep)):
+        for iter in range(self.args.local_ep):
             batch_loss = []
             for batch_idx, (images, labels) in enumerate(self.trainloader):
                 images, labels = images.to(self.device), labels.to(self.device)
@@ -71,13 +71,10 @@ class LocalUpdate(object):
         return model.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
     def inference(self, model):
-        """ Returns the inference accuracy and loss.
-        """
-
         model.eval()
         loss, total, correct = 0.0, 0.0, 0.0
 
-        with torch.no_grad:
+        with torch.no_grad():
             for batch_idx, (images, labels) in enumerate(self.trainloader):
                 images, labels = images.to(self.device), labels.to(self.device)
                 logits = model(images)
@@ -85,7 +82,7 @@ class LocalUpdate(object):
                 loss += batch_loss.item()
 
                 # Prediction
-                _values, indicies = torch.max(logits, 1)
+                _, indicies = torch.max(logits, 1)
                 indicies = indicies.view(-1) # same as flatten
                 correct += torch.sum(torch.eq(indicies, labels)).item()
                 total += len(labels)

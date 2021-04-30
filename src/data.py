@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset
 
 def loadfemnist_raw(dir):
-    dir = "/home/ubuntu/Github/2021-Spring-15-884-Course-Project-Federated-Learning/jxli/data/femnist/" + dir
+    dir = "/home/ubuntu/Github/fedlearn/data/femnist/" + dir
     data_files = [x for x in os.listdir(dir) if ".json" in x]
 
     datas = []
@@ -49,7 +49,7 @@ class LeafFEMNISTDataset(Dataset):
         return xdata.reshape((1, 28, 28)), ydata
 
 if __name__ == "__main__":
-    _, _, users, _ = raw_data = loadfemnist_raw("niid_small/train")
+    _, _, users, _ = raw_data = loadfemnist_raw("iid_s/train")
     user = list(users.keys())[0]
     dataset = LeafFEMNISTDataset(raw_data, user)
     import pdb; pdb.set_trace()

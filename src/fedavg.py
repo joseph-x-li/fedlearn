@@ -11,17 +11,16 @@ from models import femnistmodel
 from utils import average_weights
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device {device}")
 
-# p fedavg.py --epochs 5 --frac 0.1 --local_ep 6 --local_bs 32 
+# python3.6 fedavg.py --epochs 50 --frac 0.1 --local_ep 10 --local_bs 32
+# python3.6 fedavg.py --epochs 100 --local_ep 10 --local_bs 32 --
 
 def train(args, global_model, raw_data_train, raw_data_test):
     start_time = time.time()
     user_list = list(raw_data_train[2].keys())
     global_model.to(device)
-    global_model.train()
     global_weights = global_model.state_dict()
-    print(global_model)
-
 
     m = max(int(args.frac * len(user_list)), 1)
     print(f"Training {m} users each round")
@@ -29,55 +28,51 @@ def train(args, global_model, raw_data_train, raw_data_test):
     train_loss, train_accuracy = [], []
     for epoch in range(args.epochs):
         local_weights, local_losses = [], []
-        print(f'Global Training Round : {epoch+1}\n')
-
-        global_model.train()
-        
+        print(f'Global Training Round: {epoch + 1}/{args.epochs}')
         sampled_users = random.sample(user_list, m)
-
-        for user in sampled_users:
+        for user in tqdm(sampled_users):
             local_model = LocalUpdate(args=args, raw_data=raw_data_train, user=user)
             w, loss = local_model.update_weights(copy.deepcopy(global_model))
             local_weights.append(copy.deepcopy(w))
-            local_losses.append(copy.deepcopy(loss))
+            local_losses.append(loss)
 
         # update global weights
         global_weights = average_weights(local_weights)
         global_model.load_state_dict(global_weights)
 
-        loss_avg = sum(local_losses) / len(local_losses)
-        train_loss.append(loss_avg)
+        train_loss.append(sum(local_losses) / len(local_losses))
 
         # Calculate avg training accuracy over all users at every epoch
-        list_acc, list_loss = [], []
-        global_model.eval()
+        test_acc, test_loss = [], []
         for user in user_list:
             local_model = LocalUpdate(args=args, raw_data=raw_data_test, user=user)
             acc, loss = local_model.inference(model=global_model)
-            list_acc.append(acc)
-            list_loss.append(loss)
+            test_acc.append(acc)
+            test_loss.append(loss)
 
-        train_accuracy.append(sum(list_acc)/len(list_acc))
+        train_accuracy.append(sum(test_acc) / len(test_acc))
 
-        print(f'Training Loss : {np.mean(np.array(train_loss))}')
-        print('Train Accuracy: {:.2f}% \n'.format(100*train_accuracy[-1]))
+        print(f"Train Loss: {train_loss[-1]:.4f}\t Test Accuracy: {(100 * train_accuracy[-1]):.2f}%")
 
-    # Test inference after completion of training
-    test_acc, test_loss = test_inference(args, global_model, test_dataset)
 
     print(f'Results after {args.epochs} global rounds of training:')
-    print("|---- Avg Train Accuracy: {:.2f}%".format(100*train_accuracy[-1]))
-    print("|---- Test Accuracy: {:.2f}%".format(100*test_acc))
-
-    print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))
+    print("Avg Train Accuracy: {:.2f}%".format(100 * train_accuracy[-1]))
+    print(f"Total Run Time: {(time.time() - start_time):0.4f}")
 
 def test(args, model):
+    # Test inference after completion of training
+    test_acc, test_loss = test_inference(args, global_model, test_dataset)
+    print("Test Accuracy: {:.2f}%".format(100*test_acc))
     pass
-# raw_data_test = loadfemnist_raw("niid_small/test")
+
 if __name__ == "__main__":
     args = args_parser()
+    data_base_path = ""
+    data_base_path += "iid_" if args.iid else "niid_"
+    data_base_path += "s" if args.dataset_size == "small" else "l"
+
     global_model = femnistmodel()
-    raw_data_train = loadfemnist_raw("niid_s/train")
-    raw_data_train = loadfemnist_raw("niid_s/test")
-    model = train(args, global_model)
+    data_train = loadfemnist_raw(data_base_path + "/train")
+    data_test = loadfemnist_raw(data_base_path + "/test")
+    model = train(args, global_model, data_train, data_test)
     # test(args)
