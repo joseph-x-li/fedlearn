@@ -10,6 +10,10 @@ https://arxiv.org/pdf/1812.06127.pdf
 
 FedSEM  
 https://arxiv.org/pdf/1812.06127.pdf
+Must have full client participation
+Sensitive to cluster initialization
+Cannot adjust number of clusters
+
 
 CFL  
 https://arxiv.org/pdf/1910.01991.pdf

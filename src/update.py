@@ -49,14 +49,15 @@ class LocalUpdate:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.criterion = nn.CrossEntropyLoss()
 
-    def update_weights(self, model):
+    def update_weights(self, model, local_ep_override=None):
         # Set mode to train model
         model.train()
         epoch_loss = []
+        local_epochs = self.args.local_ep if local_ep_override is None else local_ep_override
 
         optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr, momentum=self.args.momentum)
 
-        for iter in range(self.args.local_ep):
+        for iter in range(local_epochs):
             batch_loss = []
             for batch_idx, (images, labels) in enumerate(self.trainloader):
                 images, labels = images.to(self.device), labels.to(self.device)

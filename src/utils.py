@@ -1,5 +1,7 @@
 import copy
-import  torch
+import torch
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
 
 def average_weights(w):
     """
@@ -23,3 +25,65 @@ def weight_dist(w1, w2):
 
 
     return totaldist
+
+def _flatten(source, args):
+    """
+    Flatten a state_dict into a 1D tensor.
+    If we are doing weight sharing, this will only flatten the FC layers.
+    """
+    if args.cfl_wsharing:
+        return torch.cat([v.flatten() for v in source.values()[4:]]).detach()
+    return torch.cat([value.flatten() for value in source.values()]).detach()
+
+def subtract_weights(minuends, subtrahend, args):
+    """
+    Used in CFL
+    minuends: list of state_dicts
+    subtrahend: state_dict of cluster center
+    return flattened weights on CPU as a vector
+    """
+    result = []
+    subtrahend = _flatten(subtrahend, args)
+    for dct in minuends:
+        minuend = _flatten(dct, args)
+        result.append(minuend - subtrahend)
+    
+    return result
+
+def pairwise_cossim(state_vecs):
+    """
+    Used in CFL
+    Computes all pairwise cosine similiarities given a list of state_vecs.
+    Returns a 2D numpy array.
+    """
+    angles = torch.zeros([len(state_vecs), len(state_vecs)])
+    for i, t1 in enumerate(state_vecs):
+        for j, t2 in enumerate(state_vecs):
+            angles[i,j] = torch.sum(t1 * t2) / (torch.norm(t1) * torch.norm(t2) + 1e-12)
+
+    return angles.numpy()
+
+def compute_max_update_norm(state_vecs):
+    """
+    state_vecs: contianing weight updates for a cluster.
+    return the magnitude of the one with largest L2 norm.
+    """
+    return max(torch.norm(vec).item() for vec in state_vecs)
+
+def compute_mean_update_norm(state_vecs):
+    """
+    state_vecs contianing weight updates for a cluster.
+    return the L2 norm of the average weight update.
+    """
+    base = copy.deepcopy(state_vecs[0])
+    for vec in state_vecs[1:]:
+        base += vec
+    return torch.norm(base / len(state_vecs)).item()
+
+def cluster_clients(similarities):
+    # since precomputed, it clusters based on distance. 
+    # Thus, we negate cossim since close points have large cossim, which is the opposite of what we want.
+    clustering = AgglomerativeClustering(affinity="precomputed", linkage="complete").fit(-similarities)
+    c1_idx = np.argwhere(clustering.labels_ == 0).flatten() 
+    c2_idx = np.argwhere(clustering.labels_ == 1).flatten() 
+    return c1_idx, c2_idx

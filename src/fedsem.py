@@ -4,6 +4,7 @@ import random
 import time
 import numpy as np
 from tqdm import tqdm
+from collections import Counter
 
 from arguments import args_parser
 from update import LocalUpdate, test_inference
@@ -17,7 +18,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device {device}")
 
 # IID  # python3.6 fedsem.py --clusters 4 --epochs 50 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 1 --dataset_size small
-# NIID # python3.6 fedsem.py --clusters 4 --epochs 200  --local_ep 1 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small
+# NIID # python3.6 fedsem.py --clusters 4 --epochs 1000  --local_ep 1 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small
 
 
 def train(args, global_model, raw_data_train, raw_data_test):
@@ -67,6 +68,8 @@ def train(args, global_model, raw_data_train, raw_data_test):
                 dists[ridx, cidx] = weight_dist(user_weight, cluster_model.state_dict())
 
         user_assignments = list(np.argmin(dists, axis=1))
+        print("Cluster: number of clients in that cluster index")
+        print(Counter(user_assignments))
         print(f"")
 
         # Calculate avg training accuracy over all users at every epoch
@@ -105,4 +108,3 @@ if __name__ == "__main__":
     data_train = loadfemnist_raw(data_base_path + "/train")
     data_test = loadfemnist_raw(data_base_path + "/test")
     model = train(args, global_model, data_train, data_test)
-    # test(args)

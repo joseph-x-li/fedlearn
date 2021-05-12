@@ -2,6 +2,7 @@ import torch
 import copy
 import random
 import time
+import numpy as np
 from tqdm import tqdm
 
 from arguments import args_parser
@@ -15,8 +16,13 @@ import wandb
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device {device}")
 
-# IID  # python3.6 fedavg.py --epochs 500 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 1 --dataset_size small
-# NIID # python3.6 fedavg.py --epochs 500 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small
+# IID 
+# python3.6 fedavg.py --epochs 500 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 1 --dataset_size small
+# NIID 
+# python3.6 fedavg.py --epochs 500 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small
+# NIID with sigmoid 
+# python3.6 fedavg.py --epochs 500 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small --sample_dist sigmoid --sigm_domain 2
+
 # ./preprocess.sh -s niid --sf 0.05 -k 100 -t sample --smplseed 1549786595 --spltseed 1549786796
 # ./preprocess.sh -s iid --sf 0.05 -k 100 -t sample --smplseed 1549786595 --spltseed 1549786796
 
@@ -39,7 +45,14 @@ def train(args, global_model, raw_data_train, raw_data_test):
     for epoch in range(args.epochs):
         local_weights, local_losses = [], []
         print(f"Global Training Round: {epoch + 1}/{args.epochs}")
-        sampled_users = random.sample(user_list, m)
+
+        if args.sample_dist == "uniform":
+            sampled_users = random.sample(user_list, m)
+        else:
+            xs = np.linspace(-args.sigm_domain, args.sigm_domain, len(user_list))
+            sigmdist = 1/(1 + np.exp(-xs))
+            sampled_users = np.random.choice(user_list, m, p=sigmdist / sigmdist.sum())
+
         for user in tqdm(sampled_users):
             local_model = LocalUpdate(args=args, raw_data=raw_data_train, user=user)
             w, loss = local_model.update_weights(copy.deepcopy(global_model))
@@ -71,13 +84,6 @@ def train(args, global_model, raw_data_train, raw_data_test):
     print(f"Total Run Time: {(time.time() - start_time):0.4f}")
 
 
-def test(args, model):
-    # Test inference after completion of training
-    test_acc, test_loss = test_inference(args, global_model, test_dataset)
-    print("Test Accuracy: {:.2f}%".format(100 * test_acc))
-    pass
-
-
 if __name__ == "__main__":
     args = args_parser()
     if args.iid:
@@ -93,4 +99,3 @@ if __name__ == "__main__":
     data_train = loadfemnist_raw(data_base_path + "/train")
     data_test = loadfemnist_raw(data_base_path + "/test")
     model = train(args, global_model, data_train, data_test)
-    # test(args)
