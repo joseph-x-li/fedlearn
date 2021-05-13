@@ -23,7 +23,6 @@ def weight_dist(w1, w2):
     for k in w1.keys():
         totaldist += ((w1[k] - w2[k]) ** 2).sum()
 
-
     return totaldist
 
 def _flatten(source, args):
@@ -32,7 +31,7 @@ def _flatten(source, args):
     If we are doing weight sharing, this will only flatten the FC layers.
     """
     if args.cfl_wsharing:
-        return torch.cat([v.flatten() for v in source.values()[4:]]).detach()
+        return torch.cat([source[k].flatten() for k in ['7.weight', '7.bias', '9.weight', '9.bias']]).detach()
     return torch.cat([value.flatten() for value in source.values()]).detach()
 
 def subtract_weights(minuends, subtrahend, args):
@@ -97,6 +96,9 @@ class Accumulator:
         self.sharedw_keys = ['0.weight', '0.bias', '3.weight', '3.bias']
 
     def add(self, state_dicts):
+        """
+        state_dicts: list of state_dict that we accumulate into sharedw_dict
+        """
         if self.sharedw_dict is None:
             self.sharedw_dict = {k : copy.deepcopy(state_dicts[0][k]) for k in self.sharedw_keys}
             for dct in state_dicts[1:]:
@@ -111,14 +113,16 @@ class Accumulator:
 
     def write(self, models):
         """
+        models: list of Pytorch models
         1) Average accumulated weights together
         2) write them into the state_dicts of the models
         """
+        print(f"Writing average of {self.shared_n} models")
         averaged = {k: self.sharedw_dict[k] / self.shared_n for k in self.sharedw_dict}
         for model in models:
             sd = model.state_dict()
             for k in self.sharedw_keys:
-                sd[k] = copy.deepcopy(self.sharedw_dict[k])
+                sd[k] = copy.deepcopy(averaged[k])
             model.load_state_dict(sd)
 
     def flush(self):
