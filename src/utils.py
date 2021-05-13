@@ -68,7 +68,9 @@ def compute_max_update_norm(state_vecs):
     state_vecs: contianing weight updates for a cluster.
     return the magnitude of the one with largest L2 norm.
     """
-    return max(torch.norm(vec).item() for vec in state_vecs)
+    norms = [torch.norm(vec).item() for vec in state_vecs]
+    print(f"average of norms: {sum(norms) / len(norms)}")
+    return max(norms)
 
 def compute_mean_update_norm(state_vecs):
     """
@@ -87,3 +89,38 @@ def cluster_clients(similarities):
     c1_idx = np.argwhere(clustering.labels_ == 0).flatten() 
     c2_idx = np.argwhere(clustering.labels_ == 1).flatten() 
     return c1_idx, c2_idx
+
+class Accumulator:
+    def __init__(self):
+        self.sharedw_dict = None
+        self.shared_n = 0
+        self.sharedw_keys = ['0.weight', '0.bias', '3.weight', '3.bias']
+
+    def add(self, state_dicts):
+        if self.sharedw_dict is None:
+            self.sharedw_dict = {k : copy.deepcopy(state_dicts[0][k]) for k in self.sharedw_keys}
+            for dct in state_dicts[1:]:
+                for k in self.sharedw_keys:
+                    self.sharedw_dict[k] += dct[k]
+        else:
+            for dct in state_dicts:
+                for k in self.sharedw_keys:
+                    self.sharedw_dict[k] += dct[k]
+        
+        self.shared_n += len(state_dicts)
+
+    def write(self, models):
+        """
+        1) Average accumulated weights together
+        2) write them into the state_dicts of the models
+        """
+        averaged = {k: self.sharedw_dict[k] / self.shared_n for k in self.sharedw_dict}
+        for model in models:
+            sd = model.state_dict()
+            for k in self.sharedw_keys:
+                sd[k] = copy.deepcopy(self.sharedw_dict[k])
+            model.load_state_dict(sd)
+
+    def flush(self):
+        self.sharedw_dict = None
+        self.shared_n = 0

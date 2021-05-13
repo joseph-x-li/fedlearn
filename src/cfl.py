@@ -11,17 +11,17 @@ from update import LocalUpdate, test_inference
 from data import loadfemnist_raw
 from models import femnistmodel
 from utils import average_weights, subtract_weights, pairwise_cossim,\
-compute_mean_update_norm, compute_max_update_norm, cluster_clients
+compute_mean_update_norm, compute_max_update_norm, cluster_clients, Accumulator
 
 import wandb
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device {device}")
 
-# NIID CONVERTED
-# python3.6 cfl.py --epochs 500 --cpr 3 --local_ep 100 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small --cfl_e1 0.25 --cfl_e2 1.0 --cfl_split_every 7 --cfl_min_size 20 --cfl_local_epochs 1
-# NIID with sigmoid 
-# python3.6 cfl.py --epochs 500 --cpr 3 --local_ep 10 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small --sample_dist sigmoid --sigm_domain 2
+# NIID WSH
+# python3.6 cfl.py --epochs 500 --cpr 3 --local_ep 50 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small --cfl_e1 0.225 --cfl_e2 0.9 --cfl_split_every 7 --cfl_min_size 20 --cfl_local_epochs 1 --cfl_wsharing 1
+# NIID NWSH
+# python3.6 cfl.py --epochs 500 --cpr 3 --local_ep 50 --local_bs 10 --lr 0.004 --iid 0 --dataset_size small --cfl_e1 0.225 --cfl_e2 0.9 --cfl_split_every 7 --cfl_min_size 20 --cfl_local_epochs 1 --cfl_wsharing 0
 
 # ./preprocess.sh -s niid --sf 0.05 -k 100 -t sample --smplseed 1549786595 --spltseed 1549786796
 # ./preprocess.sh -s iid --sf 0.05 -k 100 -t sample --smplseed 1549786595 --spltseed 1549786796
@@ -31,14 +31,13 @@ def train(args, global_model, raw_data_train, raw_data_test):
     start_time = time.time()
     user_list = list(raw_data_train[2].keys())[:100]
     nusers = len(user_list)
-    conv_keys = ['0.weight', '0.bias', '3.weight', '3.bias']
-    if args.cfl_wsharing:
-        sh_conv_layers = {k: global_model.state_dict()[k] for k in conv_keys}
-    else:
-        del global_model
     cluster_models = [copy.deepcopy(global_model)]
+    del global_model
     cluster_models[0].to(device)
     cluster_assignments = [user_list.copy()] # all users assigned to single cluster_model in beginning
+
+    if args.cfl_wsharing:
+        shaccumulator = Accumulator()
 
     if args.frac == -1:
         m = args.cpr
@@ -68,6 +67,9 @@ def train(args, global_model, raw_data_train, raw_data_test):
                     local_weights.append(copy.deepcopy(w))
                     all_losses.append(loss)
 
+                # record shared weights so far
+                if args.cfl_wsharing:
+                    shaccumulator.add(local_weights)
 
                 weight_updates = subtract_weights(local_weights, cluster_model.state_dict(), args)
                 similarities = pairwise_cossim(weight_updates)
@@ -102,7 +104,12 @@ def train(args, global_model, raw_data_train, raw_data_test):
                     new_cluster_models.append(cluster_model)
                     new_cluster_assignments.append(assignments)
 
+
+            # Write everything
             cluster_models = new_cluster_models
+            if args.cfl_wsharing:
+                shaccumulator.write(cluster_models)
+                shaccumulator.flush()
             cluster_assignments = new_cluster_assignments
             train_loss.append(sum(all_losses) / len(all_losses))
 
@@ -127,10 +134,16 @@ def train(args, global_model, raw_data_train, raw_data_test):
                     local_weights.append(copy.deepcopy(w))
                     all_losses.append(loss)
 
-                # update global weights
+
+                # update global and shared weights
+                if args.cfl_wsharing:
+                    shaccumulator.add(local_weights)
                 new_cluster_weights = average_weights(local_weights)
                 cluster_model.load_state_dict(new_cluster_weights)
 
+            if args.cfl_wsharing:
+                shaccumulator.write(cluster_models)
+                shaccumulator.flush()
             train_loss.append(sum(all_losses) / len(all_losses))
 
         # Calculate avg training accuracy over all users at every epoch
